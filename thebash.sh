@@ -23,9 +23,9 @@ echo "Hardening SSH configuration..."
 # Backup original SSH config
 cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 
-# Modify SSH configuration for security
+# Modify SSH configuration for security, but keep password login enabled
 sed -i 's/#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config  # Keep password-based login enabled
 sed -i 's/#MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config
 sed -i 's/#LoginGraceTime 2m/LoginGraceTime 1m/' /etc/ssh/sshd_config
 sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords no/' /etc/ssh/sshd_config
@@ -64,7 +64,7 @@ echo "Securing file permissions..."
 
 # Set permissions for sensitive files
 chmod 600 /etc/ssh/sshd_config
-chmod 600 /etc/passwd
+chmod 644 /etc/passwd  # Permissions corrected here to prevent user issues
 chmod 600 /etc/shadow
 chmod 700 /root
 
@@ -74,7 +74,7 @@ chmod +t /var/tmp
 
 echo "File permissions secured."
 
-# 6. Disable root login (but leave services running)
+# 6. Disable root login via console but keep root user active
 echo "Disabling root login via console..."
 
 # Backup original securetty file
@@ -104,8 +104,6 @@ echo "-w /var/log/ -p wa -k log_modifications" >> /etc/audit/audit.rules
 # Restart auditd service
 service auditd restart
 
-#!/bin/bash
-
 # Function to change the port state using UFW
 change_port_state() {
     local port=$1
@@ -122,18 +120,18 @@ change_port_state() {
 
 # Function to handle user input for specific ports
 manage_specific_ports() {
-    declare -A ports=(
-        [21]="ftp"
-        [22]="ssh"
-        [80]="http"
-        [445]="microsoft-ds"
-        [631]="ipp"
-        [3000]="ppp"
-        [3306]="mysql"
-        [3500]="rtmp-port"
-        [6697]="ircs-u"
-        [8080]="http-proxy"
-        [8181]="intermapper"
+    declare -A ports=( 
+        [21]="ftp" 
+        [22]="ssh" 
+        [80]="http" 
+        [445]="microsoft-ds" 
+        [631]="ipp" 
+        [3000]="ppp" 
+        [3306]="mysql" 
+        [3500]="rtmp-port" 
+        [6697]="ircs-u" 
+        [8080]="http-proxy" 
+        [8181]="intermapper" 
     )
 
     for port in "${!ports[@]}"; do
@@ -174,5 +172,4 @@ manage_specific_ports
 manage_additional_ports
 
 echo "Firewall configuration complete."
-
 echo "System hardening completed."
