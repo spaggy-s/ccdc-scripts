@@ -382,4 +382,6 @@ sudo systemctl restart clamav-daemon
 echo "ClamAV and rkhunter installation complete!"
 echo "You can run ClamAV scans with 'clamscan' and rkhunter checks with 'rkhunter --check'."
 
+history -c
+
 echo "System hardening completed."
