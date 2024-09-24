@@ -104,6 +104,14 @@ echo "-w /var/log/ -p wa -k log_modifications" >> /etc/audit/audit.rules
 # Restart auditd service
 service auditd restart
 
+# Disable IPv6
+echo "Disabling unused network protocols (IPv6)..."
+echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf
+echo "net.ipv6.conf.lo.disable_ipv6 = 1" >> /etc/sysctl.conf
+sysctl -p
+echo "IPv6 disabled."
+
 # Function to change the port state using UFW
 change_port_state() {
     local port=$1
@@ -172,4 +180,206 @@ manage_specific_ports
 manage_additional_ports
 
 echo "Firewall configuration complete."
+
+echo "Starting ProFTPD patching process..."
+
+# Stop the current ProFTPD service if running
+echo "Stopping ProFTPD service (if running)..."
+if service proftpd status &> /dev/null; then
+    sudo service proftpd stop
+fi
+
+# Check if ProFTPD is installed in /opt
+if [ -d "/opt/proftpd" ]; then
+    echo "Found ProFTPD installed in /opt."
+    
+    # Backup the existing configuration file to the user's home directory
+    if [ -f "/opt/proftpd/etc/proftpd.conf" ]; then
+        echo "Backing up existing ProFTPD configuration..."
+        BACKUP_DIR="$HOME"  # Set backup directory to user's home directory
+        sudo cp /opt/proftpd/etc/proftpd.conf "$BACKUP_DIR/proftpd.conf.backup"
+        echo "Backup saved to $BACKUP_DIR/proftpd.conf.backup."
+    fi
+
+    # Remove ProFTPD from /opt
+    echo "Removing ProFTPD from /opt..."
+    sudo rm -rf /opt/proftpd
+    echo "ProFTPD removed from /opt."
+else
+    echo "No ProFTPD installation found in /opt."
+fi
+
+# Clean up any remaining init.d scripts or configuration files
+echo "Cleaning up old ProFTPD configuration files..."
+sudo rm -f /etc/init.d/proftpd
+sudo rm -f /etc/proftpd/proftpd.conf
+echo "Cleanup complete."
+
+# Install ProFTPD from the official repository
+echo "Updating package index..."
+sudo apt-get update
+
+# Install ProFTPD
+echo "Installing the latest version of ProFTPD..."
+sudo apt-get install proftpd -y
+
+# Verify installation
+echo "Verifying ProFTPD installation..."
+proftpd -v
+
+# Restart the ProFTPD service
+echo "Restarting ProFTPD service..."
+sudo service proftpd restart
+
+# Final output
+echo "ProFTPD patching process complete."
+echo "ProFTPD is now installed and running."
+Changes Made
+Backup Directory: The backup directory is 
+
+echo "Starting Samba patching process..."
+
+# Backup the existing Samba configuration
+echo "Backing up Samba configuration..."
+sudo cp /etc/samba/smb.conf ~/smb.conf.backup
+
+# Install the latest version of Samba
+echo "Installing the latest version of Samba..."
+sudo apt-get install samba -y
+
+# Restart Samba services
+echo "Restarting Samba services..."
+sudo service smbd restart
+sudo service nmbd restart
+
+echo "Samba patching process complete."
+
+echo installing useful tools
+
+wget https://downloads.cisofy.com/lynis/lynis-3.1.1.tar.gz
+tar -xzf lynis-latest.tar.gz
+echo lynis is installed
+
+sudo apt-get install fail2ban 
+
+echo "Backing up default jail.conf..."
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.conf.bak
+
+# Create or modify jail.local
+echo "Creating or modifying jail.local..."
+
+sudo tee /etc/fail2ban/jail.local > /dev/null <<EOF
+[DEFAULT]
+bantime = 3600                  # 1 hour ban
+findtime = 600                  # 10 minutes findtime window
+maxretry = 5                    # Ban after 5 failed attempts
+ignoreip = 127.0.0.1/8          # Ignore local IP
+
+# Enable SSH protection
+[sshd]
+enabled = true
+port    = ssh
+logpath = /var/log/auth.log
+maxretry = 5
+
+# Enable Samba protection
+[smb]
+enabled = true
+port    = netbios-ssn,445
+logpath = /var/log/samba/log.smbd
+maxretry = 3
+
+# Protect proftpd
+[proftpd]
+enabled = true
+port    = ftp,ftp-data,ftps
+logpath = /var/log/proftpd/proftpd.log
+maxretry = 5
+EOF
+
+# Restart Fail2ban to apply changes
+echo "Restarting Fail2ban service..."
+sudo systemctl restart fail2ban
+sudo systemctl enable fail2ban
+
+# Show Fail2ban status and enabled jails
+echo "Fail2ban status:"
+sudo fail2ban-client status
+
+sudo apt-get install -y libapache2-modsecurity
+
+# Enable the ModSecurity module
+sudo a2enmod security2
+
+# Restart Apache to apply changes
+sudo service apache2 restart
+
+# Copy the default ModSecurity configuration file
+if [ ! -f /etc/modsecurity/modsecurity.conf ]; then
+    sudo cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf
+fi
+
+# Set ModSecurity to "Prevention Mode" (actively blocking threats)
+sudo sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf
+
+# Download and set up the OWASP Core Rule Set (CRS)
+sudo apt-get install -y git
+sudo git clone https://github.com/coreruleset/coreruleset.git /etc/apache2/modsecurity-crs
+sudo cp /etc/apache2/modsecurity-crs/crs-setup.conf.example /etc/apache2/modsecurity-crs/crs-setup.conf
+
+# Include CRS configuration in the Apache ModSecurity configuration
+if ! grep -q "IncludeOptional /etc/apache2/modsecurity-crs/*.conf" /etc/apache2/mods-available/security2.conf; then
+    echo "IncludeOptional /etc/apache2/modsecurity-crs/*.conf" | sudo tee -a /etc/apache2/mods-available/security2.conf
+fi
+
+# Add some custom security rules
+cat <<EOT | sudo tee /etc/apache2/modsecurity-crs/custom.rules
+# Block requests from certain User-Agents (e.g., curl)
+SecRule REQUEST_HEADERS:User-Agent "curl" "id:1000001,phase:1,deny,status:403,msg:'Curl requests are blocked'"
+
+# Block access to .env files
+SecRule REQUEST_URI "\.env$" "id:1000002,phase:1,deny,status:403,msg:'Access to .env files is blocked'"
+
+# Block SQL Injection attempts (basic rule)
+SecRule ARGS "\b(select|union|insert|update|delete|drop|alter)\b" \
+    "id:1000003,phase:2,deny,status:403,msg:'SQL Injection attempt blocked'"
+EOT
+
+# Include the custom rules in the Apache configuration
+if ! grep -q "IncludeOptional /etc/apache2/modsecurity-crs/custom.rules" /etc/apache2/mods-available/security2.conf; then
+    echo "IncludeOptional /etc/apache2/modsecurity-crs/custom.rules" | sudo tee -a /etc/apache2/mods-available/security2.conf
+fi
+
+# Restart Apache to apply changes
+sudo service apache2 restart
+
+echo "ModSecurity installation and configuration complete!"
+
+# Install ClamAV
+echo "Installing ClamAV..."
+sudo apt-get install -y clamav clamav-daemon
+
+# Update ClamAV virus definitions
+echo "Updating ClamAV virus definitions..."
+sudo freshclam
+
+# Install rkhunter
+echo "Installing rkhunter..."
+sudo apt-get install -y rkhunter
+
+# Update rkhunter data files
+echo "Updating rkhunter data files..."
+sudo rkhunter --update
+
+# Configure ClamAV to run on startup
+sudo systemctl enable clamav-daemon
+
+# Restart ClamAV service
+echo "Restarting ClamAV service..."
+sudo systemctl restart clamav-daemon
+
+# Display installation and update status
+echo "ClamAV and rkhunter installation complete!"
+echo "You can run ClamAV scans with 'clamscan' and rkhunter checks with 'rkhunter --check'."
+
 echo "System hardening completed."
