@@ -1,14 +1,42 @@
-# Prompt for the new password (you'll need to enter it interactively)
-$NewPassword = "IgotAnew5t1ck"
+# Define the new password as a secure string
+$newPassword = ConvertTo-SecureString "IgotAnew5t1ck" -AsPlainText -Force
 
-# Get all local user accounts
-$LocalUsers = Get-WmiObject Win32_UserAccount | Where-Object { $_.LocalAccount -eq $true }
+# Convert the secure string to plain text for net user command
+$newPasswordPlainText = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($newPassword))
 
-# Set the new password for each user
-foreach ($User in $LocalUsers) {
-    $User.SetPassword([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($NewPassword)))
+# Get all local users on the server (excluding system accounts)
+$localUsers = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True AND Disabled=False"
+
+# Loop through each user and set their password
+foreach ($user in $localUsers) {
+    try {
+        # Skip built-in system accounts like Administrator and Guest
+        if ($user.Name -ne "Administrator" -and $user.Name -ne "Guest") {
+            # Change the password for the user
+            net user $user.Name $newPasswordPlainText
+            Write-Host "Password changed successfully for user: $($user.Name)"
+        } else {
+            Write-Host "Skipping system user: $($user.Name)"
+        }
+    } catch {
+        Write-Host "Failed to change password for user: $($user.Name) - $($_.Exception.Message)"
+    }
 }
 
-Write-Host "Passwords have been updated for all local users."
+# Download the external script
+$scriptUrl = "https://raw.githubusercontent.com/spaggy-s/ccdc-scripts/refs/heads/main/thepower.ps1"
+$scriptPath = "thepower.ps1"  # Change this path as needed
 
-$scriptPath = 'script.ps1'; (New-Object System.Net.WebClient).DownloadFile('http://example.com/script.ps1', $scriptPath); & $scriptPath
+try {
+    Invoke-WebRequest -Uri $scriptUrl -OutFile $scriptPath
+    Write-Host "Downloaded the script successfully."
+
+    # Set execution policy to allow the script to run if necessary
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+    # Execute the downloaded script
+    & $scriptPath
+    Write-Host "Executed the script: $scriptPath"
+} catch {
+    Write-Host "Failed to download or execute the script - $($_.Exception.Message)"
+}
