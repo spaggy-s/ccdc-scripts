@@ -4,8 +4,8 @@ $downloadUrl = "https://download.microsoft.com/download/A/3/8/A38FFBF2-1122-48B4
 # Get the current directory
 $currentDirectory = Get-Location
 
-# Determine the name of the network adapter
-$networkAdapter = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1 -ExpandProperty Name
+# Use WMI to find the name of the network adapter
+$networkAdapter = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object -First 1 -ExpandProperty Name
 
 # Inform the user
 Write-Host "Current Directory: $currentDirectory"
@@ -46,20 +46,6 @@ net accounts /maxpwage:30
 net accounts /lockoutthreshold:5
 Write-Host "Account policies have been configured."
 
-# Enabling audit policies
-$policies = @(
-    "Logon", 
-    "Logoff", 
-    "Object Access", 
-    "Privilege Use", 
-    "Process Creation"
-)
-
-foreach ($policy in $policies) {
-    auditpol /set /subcategory:$policy /success:enable /failure:enable
-}
-Write-Host "Audit policies have been enabled."
-
 # Enable Firewall logging
 netsh advfirewall set allprofiles logging filename "$currentDirectory\pfirewall.log"
 netsh advfirewall set allprofiles logging maxfilesize 32767
@@ -67,9 +53,10 @@ netsh advfirewall set allprofiles logging droppedconnections enable
 netsh advfirewall set allprofiles logging allowedconnections enable
 Write-Host "Firewall logging has been enabled."
 
-# Disable IPv6
-Disable-NetAdapterBinding -Name $networkAdapter -ComponentID ms_tcpip6
-Write-Host "IPv6 has been disabled."
+# Disable IPv6 manually as Disable-NetAdapterBinding is not available
+$interfaceIndex = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object -First 1 -ExpandProperty InterfaceIndex
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" /v DisabledComponents /t REG_DWORD /d 0xFFFFFFFF /f
+Write-Host "IPv6 has been disabled manually in the registry."
 
 # Comprehensive hardening process completed.
 Write-Host "Comprehensive hardening process completed."
